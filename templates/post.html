@@ -1,18 +1,18 @@
 <div class="post">
     <div class="post-info">
-        <div class="post-profile" style="background: url(/static/images/profile.jpg) #ffffff00 0% / cover no-repeat;"></div>
+        <div class="post-profile" style="background: url({{ post.author_avatar }}) #ffffff00 0% / cover no-repeat;"></div>
         <div class="info-text">
             <div class="post-name">
-                <p class="nickname">{{ post.username }}</p>
+                <p class="nickname">{{ post.author_name }}</p>
             </div>
-            <div class="post-time">{{ post.created_at }}</div>
+            <div class="post-time">{{ post.date.strftime('%Y-%m-%d %H:%M:%S') }} </div>
         </div>
     </div>
     <div class="post-caption">
-        <div class="post-text">{{ post.content }}</div>
+        <div class="post-text">{{ post.caption }}</div>
     </div>
     <div class="post-stats">
-        <button class="post-comment">null</button>
-        <button class="post-like">null</button>
+        <button class="post-comment">{{post.comments_count}}</button>
+        <button class="post-like">{{post.likes_count}}</button>
     </div>
 </div>

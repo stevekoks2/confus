@@ -22,12 +22,15 @@
             </div>
             <div class="log-reg-left">
                 <h1 class="log-reg-title">Регистрация</h1>
-                <div class="log-reg-input">
-                    <input class="text-input" type="text" name="login" id="login" placeholder="Логин">
-                    <input class="text-input" type="email" name="mail" id="mail" placeholder="Почта">
-                    <input class="text-input" type="password" name="pass" id="pass" placeholder="Пароль">
-                    <input class="log-reg-button" type="button" value="зарегистрироваться">
-            </div>
+                <form method="POST" action="{{ url_for('register') }}">
+                    <div class="log-reg-input">
+                        <input class="text-input" type="text" name="username" id="username" placeholder="Логин">
+                        <input class="text-input" type="email" name="email" id="email" placeholder="Почта">
+                        <input class="text-input" type="password" name="password" id="password" placeholder="Пароль">
+                        <input class="log-reg-button" type="submit" value="Зарегистрироваться">
+                    </div>
+                </form>
+                <a href="login" class="log-reg-switch">Войти</a>
             </div>
         </div>
     </div>

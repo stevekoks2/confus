@@ -11,13 +11,30 @@
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
 </head>
 <body>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const createPostArea = document.querySelector('.createpost-area');
+            const buttonCont = document.querySelector('.button-cont');
+
+            createPostArea.addEventListener('click', function() {
+                buttonCont.classList.remove('hidden');
+            });
+
+            createPostArea.addEventListener('blur', function() {
+                buttonCont.classList.add('hidden');
+            });
+        });
+    </script>
+    
     <header>
         {% include 'nav.html' %}
     </header>
     <div class="container">
         <div class="createpost">
             <div class="createpost-area" contenteditable="true"></div>
-            <!-- <input style="height: 40px; width: 40px" type="button" value="отправить"> -->
+            <div class="button-cont hidden">
+                <input class="createpost-button log-reg-button" type="button">
+            </div>
         </div>
         {% for post in posts %}
             {% include 'post.html' %}
