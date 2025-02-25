@@ -20,6 +20,7 @@
                 <h1 class="log-reg-title">Регистрация</h1>
                 <form method="POST" action="{{ url_for('register') }}">
                     <div class="log-reg-input">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input class="text-input" type="text" name="username" id="username" placeholder="Логин">
                         <input class="text-input" type="email" name="email" id="email" placeholder="Почта">
                         <input class="text-input" type="password" name="password" id="password" placeholder="Пароль">
