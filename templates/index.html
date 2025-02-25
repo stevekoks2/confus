@@ -4,41 +4,127 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Confus</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/default.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+    <meta name="csrf-token" content="{{ csrf_token() }}">  <!-- CSRF-токен -->
+    {% include 'link.html' %}
 </head>
 <body>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const createPostArea = document.querySelector('.createpost-area');
             const buttonCont = document.querySelector('.button-cont');
+            const postForm = document.querySelector('.createpost form');
+            const postsContainer = document.querySelector('.posts');
 
             createPostArea.addEventListener('click', function() {
                 buttonCont.classList.remove('hidden');
             });
 
-            createPostArea.addEventListener('blur', function() {
-                buttonCont.classList.add('hidden');
+            postForm.addEventListener('submit', function(event) {
+                event.preventDefault();
+                const caption = createPostArea.innerText.trim();
+                if (caption) {
+                    const csrfToken = document.querySelector('meta[name="csrf-token"]').content;  // Получаем CSRF-токен
+                    fetch("{{ url_for('create_post') }}", {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': csrfToken  // Добавляем CSRF-токен в заголовок
+                        },
+                        body: JSON.stringify({ caption: caption })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // Очищаем поле ввода
+                            createPostArea.innerText = '';
+                            buttonCont.classList.add('hidden');
+
+                            // Добавляем новый пост в начало списка
+                            const postElement = document.createElement('div');
+                            postElement.classList.add('post');
+                            postElement.innerHTML = `
+                                <div class="post-info">
+                                    <div class="post-profile" style="background: url(${data.post.author_avatar}) #ffffff00 0% / cover no-repeat;"></div>
+                                    <div class="info-text">
+                                        <div class="post-name">
+                                            <p class="nickname">${data.post.author_name}</p>
+                                        </div>
+                                        <div class="post-time">${new Date(data.post.date).toLocaleString()}</div>
+                                    </div>
+                                </div>
+                                <div class="post-caption">
+                                    <div class="post-text">${data.post.caption}</div>
+                                </div>
+                                <div class="post-stats">
+                                    <button class="post-comment">${data.post.comments_count}</button>
+                                    <button class="post-like">${data.post.likes_count}</button>
+                                </div>
+                            `;
+                            postsContainer.insertBefore(postElement, postsContainer.firstChild);
+                        }
+                    })
+                    .catch(error => console.error('Error:', error));
+                }
             });
+
+            function loadNewPosts() {
+                fetch('/get_new_posts')
+                    .then(response => response.json())
+                    .then(posts => {
+                        postsContainer.innerHTML = '';
+                        posts.forEach(post => {
+                            const postElement = document.createElement('div');
+                            postElement.classList.add('post');
+                            postElement.innerHTML = `
+                                <div class="post-info">
+                                    <div class="post-profile" style="background: url(${post.author_avatar}) #ffffff00 0% / cover no-repeat;"></div>
+                                    <div class="info-text">
+                                        <div class="post-name">
+                                            <p class="nickname">${post.author_name}</p>
+                                        </div>
+                                        <div class="post-time">${new Date(post.date).toLocaleString()}</div>
+                                    </div>
+                                </div>
+                                <div class="post-caption">
+                                    <div class="post-text">${post.caption}</div>
+                                </div>
+                                <div class="post-stats">
+                                    <button class="post-comment">${post.comments_count}</button>
+                                    <button class="post-like">${post.likes_count}</button>
+                                </div>
+                            `;
+                            postsContainer.appendChild(postElement);
+                        });
+                    });
+            }
+
+            // Загрузка новых постов каждые 5 секунд
+            setInterval(loadNewPosts, 1000);
         });
     </script>
     
     <header>
         {% include 'nav.html' %}
     </header>
+
     <div class="container">
         <div class="createpost">
-            <div class="createpost-area" contenteditable="true"></div>
-            <div class="button-cont hidden">
-                <input class="createpost-button log-reg-button" type="button">
-            </div>
+            <form id="postForm" style="width: 100%; display: flex; flex-direction: column; align-items: center;">
+                <div class="createpost-area" name="caption" contenteditable="true"></div>
+                <div class="button-cont hidden">
+                    <input class="createpost-button log-reg-button" type="submit">
+                </div>
+            </form>
         </div>
-        {% for post in posts %}
-            {% include 'post.html' %}
-        {% endfor %}
+        <div class="posts">
+            <div class="loading"></div>
+            <div class="loading"></div>
+            <div class="loading"></div>
+            <div class="loading"></div>
+            <div class="loading"></div>
+            <div class="loading"></div>
+            <div class="loading"></div>
+        </div>
     </div>
 </body>
 </html>

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ user.username }}</title>
+    {% include 'link.html' %}
+</head>
+<body>
+    <header>
+        {% include 'nav.html' %}
+    </header>
+
+    <div class="container">
+        <div class="profile" style="background: url({{ user.background }}) #ffffff00 0% / cover no-repeat;">
+            <div class="info-profile">
+                <div class="avatar" style="background: url({{ user.avatar }}) #ffffff00 0% / cover no-repeat;"></div>
+                <div class="info-profile-text">
+                    <div class="profile-name-desc">
+                        <h1 class="profile-name">{{ user.username }}</h1>
+                        <h2 class="profile-desc">{{ user.description }}</h2>
+                    </div>
+                    <div class="profile-buttons">
+                        <p href="" class="subs">{{ user.followers_count }} подписчиков</p>
+                        <button type="button" class="nosubbed log-reg-button profile-button hidden">Подписаться</button>
+                        <a href="#" class="nosubbed log-reg-button profile-button">Редактировать</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
