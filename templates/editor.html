@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Редактирование профиля</title>
+    {% include 'link.html' %}
+    <style>
+        .editor-container {
+            width: 45vw;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+            .form-group {
+                margin-bottom: 20px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .form-group label {
+                display: block;
+                margin-bottom: 5px;
+                font-weight: bold;
+            }
+            
+            .form-control {
+                width: 100%;
+                padding: 10px;
+                border: 1px solid #ddd;
+                border-radius: 5px;
+                font-size: 16px;
+                border-radius: 6px;
+                background-color: #F2F2F2;
+                outline: none;
+                resize: none !important;
+
+                font-family: Montserrat;
+                font-size: 1.2rem;
+                font-weight: 400;
+                color: #292929;
+                transition: 0.2s;
+                border: none;
+
+            }
+            
+            textarea.form-control {
+                min-height: 100px;
+            }
+            textarea.form-control:focus-within {
+                background-color: rgb(232, 232, 232);
+            }
+            
+            .avatar-preview, .background-preview {
+                width: 150px;
+                height: 150px;
+                margin: 10px 0;
+                border-radius: 5px;
+                background-size: cover;
+                background-position: center;
+            }
+            
+            .background-preview {
+                width: 100%;
+                height: 200px;
+            }
+            
+            .btn-save {
+                background-color: #4CAF50;
+                color: white;
+                padding: 10px 20px;
+                border: none;
+                border-radius: 5px;
+                cursor: pointer;
+                font-size: 16px;
+            }
+            
+            .btn-save:hover {
+                background-color: #45a049;
+            }
+    </style>
+</head>
+<body>
+    <header>
+        {% include 'nav.html' %}
+    </header>
+
+    <div class="container">
+        <div class="editor-container">
+            <h1>Редактирование профиля</h1>
+            
+            <form action="{{ url_for('update_profile') }}" method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                
+
+                
+                <div class="form-group">
+                    <h2 for="avatar">Аватар</h2>
+                    <div class="avatar-preview" style="background-image: url('{{ user.avatar }}')"></div>
+                    <input type="file" id="avatar" name="avatar" accept="image/*">
+                </div>
+                
+                <div class="form-group">
+                    <h2 for="background">Фон профиля</h2>
+                    <div class="background-preview" style="background-image: url('{{ user.background }}')"></div>
+                    <input type="file" id="background" name="background" accept="image/*">
+                </div>
+
+                <div class="form-group">
+                    <h2 for="description">Описание профиля</h2>
+                    <textarea id="description" name="description" class="form-control">{{ user.description }}</textarea>
+                </div>
+                
+                <button type="submit" class="nosubbed log-reg-button profile-button" style="width: 100%;">Сохранить изменения</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Предпросмотр изображений перед загрузкой
+        document.getElementById('avatar').addEventListener('change', function(e) {
+            const preview = document.querySelector('.avatar-preview');
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    preview.style.backgroundImage = `url('${e.target.result}')`;
+                }
+                reader.readAsDataURL(file);
+            }
+        });
+        
+        document.getElementById('background').addEventListener('change', function(e) {
+            const preview = document.querySelector('.background-preview');
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    preview.style.backgroundImage = `url('${e.target.result}')`;
+                }
+                reader.readAsDataURL(file);
+            }
+        });
+    </script>
+</body>
+</html>

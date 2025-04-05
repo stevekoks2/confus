@@ -14,11 +14,13 @@
             const buttonCont = document.querySelector('.button-cont');
             const postForm = document.querySelector('.createpost form');
             const postsContainer = document.querySelector('.posts');
-
+        
+            // Обработчик для отображения кнопки отправки поста
             createPostArea.addEventListener('click', function() {
                 buttonCont.classList.remove('hidden');
             });
-
+        
+            // Обработчик для отправки поста
             postForm.addEventListener('submit', function(event) {
                 event.preventDefault();
                 const caption = createPostArea.innerText.trim();
@@ -38,7 +40,7 @@
                             // Очищаем поле ввода
                             createPostArea.innerText = '';
                             buttonCont.classList.add('hidden');
-
+        
                             // Добавляем новый пост в начало списка
                             const postElement = document.createElement('div');
                             postElement.classList.add('post');
@@ -47,7 +49,7 @@
                                     <div class="post-profile" style="background: url(${data.post.author_avatar}) #ffffff00 0% / cover no-repeat;"></div>
                                     <div class="info-text">
                                         <div class="post-name">
-                                            <p class="nickname">${data.post.author_name}</p>
+                                            <a href="/profile/${data.post.author_id}" class="nickname">${data.post.author_name}</a>
                                         </div>
                                         <div class="post-time">${new Date(data.post.date).toLocaleString()}</div>
                                     </div>
@@ -57,17 +59,64 @@
                                 </div>
                                 <div class="post-stats">
                                     <button class="post-comment">${data.post.comments_count}</button>
-                                    <button class="post-like">${data.post.likes_count}</button>
+                                    <button type="button" class="post-like" data-post-id="${data.post.id}">${data.post.likes_count}</button>
                                 </div>
                             `;
                             postsContainer.insertBefore(postElement, postsContainer.firstChild);
+        
+                            // Добавляем обработчик для новой кнопки лайка
+                            addLikeHandlers();
                         }
                     })
                     .catch(error => console.error('Error:', error));
                 }
             });
-
+        
+            // Функция для добавления обработчиков лайков
+            function addLikeHandlers() {
+                document.querySelectorAll('.post-like').forEach(button => {
+                    button.addEventListener('click', function() {
+                        const postId = this.getAttribute('data-post-id');
+                        const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+        
+                        console.log('Post ID:', postId);  // Логируем post_id
+                        console.log('CSRF Token:', csrfToken);  // Логируем CSRF-токен
+        
+                        fetch("{{ url_for('like_post') }}", {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': csrfToken  // Передаём CSRF-токен
+                            },
+                            body: JSON.stringify({ post_id: postId, csrf_token: csrfToken })  // Добавляем CSRF-токен в тело запроса
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            console.log('Server response:', data);  // Логируем ответ сервера
+                            if (data.success) {
+                                const likeButton = document.querySelector(`.post-like[data-post-id="${postId}"]`);
+                                if (likeButton) {
+                                    const currentLikes = parseInt(likeButton.innerText);
+                                    if (data.action === 'like') {
+                                        likeButton.innerText = currentLikes + 1;
+                                        likeButton.classList.add('liked');  // Добавляем класс
+                                    } else {
+                                        likeButton.innerText = currentLikes - 1;
+                                        likeButton.classList.remove('liked');  // Удаляем класс
+                                    }
+                                } else {
+                                    console.error('Like button not found for post ID:', postId);
+                                }
+                            }
+                        })
+                        .catch(error => console.error('Error:', error));
+                    });
+                });
+            }
+        
+            // Загрузка новых постов
             function loadNewPosts() {
+                console.log('Loading new posts...');  // Логируем начало загрузки
                 fetch('/get_new_posts')
                     .then(response => response.json())
                     .then(posts => {
@@ -80,7 +129,7 @@
                                     <div class="post-profile" style="background: url(${post.author_avatar}) #ffffff00 0% / cover no-repeat;"></div>
                                     <div class="info-text">
                                         <div class="post-name">
-                                            <p class="nickname">${post.author_name}</p>
+                                            <a href="/profile/${post.author_id}" class="nickname">${post.author_name}</a>
                                         </div>
                                         <div class="post-time">${new Date(post.date).toLocaleString()}</div>
                                     </div>
@@ -90,14 +139,21 @@
                                 </div>
                                 <div class="post-stats">
                                     <button class="post-comment">${post.comments_count}</button>
-                                    <button class="post-like">${post.likes_count}</button>
+                                    <button type="button" class="post-like ${post.is_liked ? 'liked' : ''}" data-post-id="${post.id}">${post.likes_count}</button>
                                 </div>
                             `;
                             postsContainer.appendChild(postElement);
                         });
-                    });
+            
+                        // Добавляем обработчики для новых кнопок лайка
+                        addLikeHandlers();
+                    })
+                    .catch(error => console.error('Error loading posts:', error));
             }
+        
+            // Загрузка новых постов при загрузке страницы
             loadNewPosts();
+        
             // Загрузка новых постов каждые 5 секунд
             setInterval(loadNewPosts, 10000);
         });

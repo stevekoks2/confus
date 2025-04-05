@@ -1,5 +1,45 @@
+<script>
+    let lastScrollTop = 0;  // Переменная для хранения последней позиции прокрутки
+
+    document.addEventListener('scroll', function() {
+        const navbar = document.querySelector('.navbar');
+        const bar = document.querySelector('.bar');
+        const navprofile = document.querySelector('.nav-profile');
+        const scrollTop = window.scrollY || document.documentElement.scrollTop;  // Текущая позиция прокрутки
+    
+        if (scrollTop > lastScrollTop) {
+            // Прокрутка вниз
+            navbar.classList.add('scrolled');
+            bar.classList.add('scrolled');
+            navprofile.classList.add('scrolled');
+        } else {
+            // Прокрутка вверх
+            navbar.classList.remove('scrolled');
+            bar.classList.remove('scrolled');
+            navprofile.classList.remove('scrolled');
+        }
+
+        if (scrollTop === 0) {
+            // Если прокрутка в самом верху страницы
+            navbar.style.marginTop = '24px';  // Возвращаем margin-top к 24px
+            navbar.classList.remove('unround-top');
+
+
+
+        } else {
+            // Если прокрутка вниз или вверх (не в самом верху)
+            navbar.style.marginTop = '0px';  // Устанавливаем margin-top в 0px
+            navbar.classList.add('unround-top');
+        }
+    
+        lastScrollTop = scrollTop <= 0 ? 0 : scrollTop;  // Обновляем последнюю позицию прокрутки
+    });
+</script>
+
+
 <div class="navbar">
     <a href="/" class="logo-w"></a>
     <div class="bar"></div>
     <a href="/profile/{{user_id}}" class="nav-profile" style="background: url({{ user_avatar }}) #ffffff00 0% / cover no-repeat;"></a>
 </div>
+

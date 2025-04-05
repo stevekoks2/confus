@@ -10,13 +10,36 @@ header {
 
 .navbar {
     margin-top: 24px;
-    height: 5vh;
+    height: 46px;
     width: 60vw;
     background-color: white;
-    border-radius: 12px;
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+    border-bottom-right-radius: 12px;
+    border-bottom-left-radius: 12px;
     display: flex;
     justify-content: space-evenly;
     align-items: center;
+    position: fixed;
+    backdrop-filter: blur(3px);
+}
+
+.unround-top {
+    border-top-left-radius: 0px;
+    border-top-right-radius: 0px;
+    width: 100vw;
+    height: 52px;
+}
+
+
+.navbar {
+    transition: all 0.3s cubic-bezier(.19,1,.22,1);
+
+}
+
+.navbar.scrolled {
+    /* background-color: rgba(255, 255, 255, 0.7); */
+    margin-top: 0px;
 }
 
 .logo-w {
@@ -110,7 +133,7 @@ header {
 .container {
     width: 45vw;
     margin: auto;
-    margin-top: 20px;
+    margin-top: 100px;
     gap: 20px;
     display: flex;
     flex-direction: column;
@@ -124,6 +147,7 @@ header {
     display: flex;
     justify-content: space-evenly;
     align-items: center;
+    color: #ffffff00;
     margin-bottom: 20px;
     flex-direction: column;
 }
@@ -135,7 +159,8 @@ header {
     background-image:url('/static/images/enter.svg'), linear-gradient(270.00deg, rgb(54, 255, 110) 0%,rgb(56, 145, 253) 100%)
                    !important;
     background-repeat: no-repeat, no-repeat !important;      
-    background-position: center !important;         
+    background-position: center !important;    
+    color: transparent !important;     
 }
 
 .createpost-button:hover {
@@ -317,8 +342,15 @@ header {
     padding: 4px 16px;
     color: white;
     border-radius: 6px;
+    min-width: 32px;
     cursor: pointer;
+    transition: all 0.3s;
 }
+
+.post-like.liked {
+    background-color: rgb(230, 48, 133);
+}
+
 
 
 .log-reg-panel   {

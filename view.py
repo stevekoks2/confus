@@ -6,6 +6,8 @@ from db import get_db_connection
 from datetime import datetime
 import pytz
 from werkzeug.security import generate_password_hash, check_password_hash
+from flask_wtf.csrf import validate_csrf
+from wtforms import ValidationError
 
 # Установка часового пояса (например, Москва)
 moscow_tz = pytz.timezone('Europe/Moscow')
@@ -142,11 +144,13 @@ def login():
 
 @app.route('/get_new_posts', methods=['GET'])
 def get_new_posts():
-    # Подключение к базе данных
     connection = get_db_connection()
     cursor = connection.cursor(dictionary=True)
 
-    # Запрос данных из таблицы posts
+    # Получаем ID текущего пользователя (если он авторизован)
+    user_id = session.get('user_id')
+
+    # Запрос для получения постов
     cursor.execute("""
         SELECT 
             posts.id, 
@@ -168,27 +172,34 @@ def get_new_posts():
     """)
     posts = cursor.fetchall()
 
-    # Закрытие соединения с базой данных
-    cursor.close()
-    connection.close()
-
-    # Преобразование времени из UTC в нужный часовой пояс
+    # Для каждого поста проверяем, лайкнул ли его текущий пользователь
     for post in posts:
         post_date = post['date']
         if isinstance(post_date, datetime):
-            # Предполагаем, что время в базе данных хранится в UTC
             utc_date = pytz.utc.localize(post_date)
             local_date = utc_date.astimezone(moscow_tz)
             post['date'] = local_date.isoformat()
 
-    # Проверка наличия аватарки в папке /static/avatar/
-    for post in posts:
+        # Проверка лайка
+        if user_id:
+            cursor.execute("""
+                SELECT id FROM likes WHERE user_id = %s AND post_id = %s
+            """, (user_id, post['id']))
+            like = cursor.fetchone()
+            post['is_liked'] = like is not None
+        else:
+            post['is_liked'] = False
+
+        # Проверка аватарки
         avatar_path = f"static/avatar/{post['author_id']}.*"
         avatar_files = glob.glob(avatar_path)
         if avatar_files:
             post['author_avatar'] = url_for('static', filename=f"avatar/{os.path.basename(avatar_files[0])}")
         else:
-            post['author_avatar'] = url_for('static', filename='avatar/default_avatar.jpg')  # Дефолтная аватарка
+            post['author_avatar'] = url_for('static', filename='avatar/default_avatar.jpg')
+
+    cursor.close()
+    connection.close()
 
     return jsonify(posts)
 
@@ -263,3 +274,172 @@ def profile(user_id):
         cursor.close()
         connection.close()
         return "Пользователь не найден", 404
+    
+
+
+@app.route('/like_post', methods=['POST'])
+def like_post():
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Необходима авторизация'}), 401
+
+    data = request.get_json()
+    print(f"Request data: {data}")  # Логируем данные запроса
+
+    # Проверяем CSRF-токен
+    csrf_token = data.get('csrf_token')
+    if not csrf_token:
+        return jsonify({'success': False, 'message': 'CSRF-токен отсутствует'}), 400
+
+    try:
+        validate_csrf(csrf_token)  # Проверяем CSRF-токен
+    except ValidationError:
+        return jsonify({'success': False, 'message': 'Неверный CSRF-токен'}), 400
+
+    post_id = data.get('post_id')
+    user_id = session['user_id']
+
+    print(f"Received like request: user_id={user_id}, post_id={post_id}")  # Логируем данные
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Ошибка подключения к базе данных'}), 500
+
+    cursor = connection.cursor()
+
+    try:
+        # Проверяем, не поставил ли пользователь уже лайк
+        cursor.execute("""
+            SELECT * FROM likes WHERE user_id = %s AND post_id = %s
+        """, (user_id, post_id))
+        existing_like = cursor.fetchone()
+        print(f"Existing like: {existing_like}")  # Логируем результат проверки
+
+        if existing_like:
+            # Если лайк уже есть, удаляем его
+            cursor.execute("""
+                DELETE FROM likes WHERE user_id = %s AND post_id = %s
+            """, (user_id, post_id))
+            action = 'unlike'
+            print("Like removed")  # Логируем удаление лайка
+        else:
+            # Если лайка нет, добавляем его
+            cursor.execute("""
+                INSERT INTO likes (user_id, post_id) VALUES (%s, %s)
+            """, (user_id, post_id))
+            action = 'like'
+            print("Like added")  # Логируем добавление лайка
+
+        # Обновляем количество лайков в таблице posts
+        cursor.execute("""
+            UPDATE posts SET likes_count = (
+                SELECT COUNT(*) FROM likes WHERE post_id = %s
+            ) WHERE id = %s
+        """, (post_id, post_id))
+        print("Likes count updated")  # Логируем обновление количества лайков
+
+        connection.commit()
+    except Exception as e:
+        print(f"Database error: {e}")  # Логируем ошибку
+        connection.rollback()
+        return jsonify({'success': False, 'message': 'Ошибка базы данных'}), 500
+    finally:
+        cursor.close()
+        connection.close()
+
+    return jsonify({'success': True, 'action': action})
+
+
+
+@app.route('/editor')
+def editor():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    user_id = session['user_id']
+    connection = get_db_connection()
+    cursor = connection.cursor(dictionary=True)
+    
+    # Получаем данные текущего пользователя
+    cursor.execute("""
+        SELECT id, username, description, avatar 
+        FROM users 
+        WHERE id = %s
+    """, (user_id,))
+    user = cursor.fetchone()
+    
+    if user:
+        # Проверяем аватар
+        avatar_path = f"static/avatar/{user_id}.*"
+        avatar_files = glob.glob(avatar_path)
+        if avatar_files:
+            user['avatar'] = url_for('static', filename=f"avatar/{os.path.basename(avatar_files[0])}")
+        else:
+            user['avatar'] = url_for('static', filename='avatar/default_avatar.jpg')
+        
+        # Проверяем фон
+        background_path = f"static/background/{user_id}.*"
+        background_files = glob.glob(background_path)
+        if background_files:
+            user['background'] = url_for('static', filename=f"background/{os.path.basename(background_files[0])}")
+        else:
+            user['background'] = url_for('static', filename='background/default_background.png')
+    
+    cursor.close()
+    connection.close()
+    
+    return render_template('editor.html', user=user)
+
+@app.route('/update_profile', methods=['POST'])
+def update_profile():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    user_id = session['user_id']
+    username = request.form.get('username')
+    description = request.form.get('description')
+    avatar = request.files.get('avatar')
+    background = request.files.get('background')
+    
+    connection = get_db_connection()
+    cursor = connection.cursor()
+    
+    try:
+        # Обновляем основные данные
+        cursor.execute("""
+            UPDATE users 
+            SET username = %s, description = %s 
+            WHERE id = %s
+        """, (username, description, user_id))
+        
+        # Сохраняем аватар, если он был загружен
+        if avatar and avatar.filename:
+            avatar_ext = os.path.splitext(avatar.filename)[1]
+            avatar_path = f"static/avatar/{user_id}{avatar_ext}"
+            
+            # Удаляем старые аватары
+            old_avatars = glob.glob(f"static/avatar/{user_id}.*")
+            for old_avatar in old_avatars:
+                os.remove(old_avatar)
+            
+            avatar.save(avatar_path)
+        
+        # Сохраняем фон, если он был загружен
+        if background and background.filename:
+            background_ext = os.path.splitext(background.filename)[1]
+            background_path = f"static/background/{user_id}{background_ext}"
+            
+            # Удаляем старые фоны
+            old_backgrounds = glob.glob(f"static/background/{user_id}.*")
+            for old_background in old_backgrounds:
+                os.remove(old_background)
+            
+            background.save(background_path)
+        
+        connection.commit()
+        return redirect(url_for('profile', user_id=user_id))
+    except Exception as e:
+        connection.rollback()
+        return str(e), 500
+    finally:
+        cursor.close()
+        connection.close()
