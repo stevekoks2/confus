@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Комментарии</title>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    {% include 'link.html' %}
+    <style>
+        /* Основные стили из вашего файла */
+        :root {
+            --fsmall: 1rem;
+            --fmedium: 1.2rem;
+            --fmediumplus: 1.4rem;
+            --flarge: 1.8rem;
+            --cwhite: #f2f2f2;
+            --cblue: rgb(48, 133, 230);
+            --cgreen: rgb(48, 230, 87);
+            --cblack: #292929;
+            --cwhiteplus: #fff;
+        }
+
+        body {
+            font-family: "Montserrat", sans-serif;
+            background-color: var(--cwhite);
+        }
+
+        .container {
+            width: 45vw;
+            margin: auto;
+            margin-top: 100px;
+            gap: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Стили для поста (аналогичные вашим постам) */
+        .post {
+            height: 100%;
+            padding: 16px;
+            color: var(--cblack);
+            background-color: var(--cwhiteplus);
+            border-radius: 12px;
+            transition: 0.3s;
+            margin-bottom: 24px;
+        }
+
+        .post-info {
+            display: flex;
+            align-items: center;
+        }
+
+        .info-text {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            width: 100%;
+            margin-left: 8px;
+            flex-direction: column;
+        }
+
+        .post-profile {
+            height: 7vh;
+            aspect-ratio: 1;
+            border-radius: 6px;
+        }
+
+        .nickname {
+            color: var(--cblack);
+            font-family: Montserrat;
+            font-size: var(--fmedium);
+            font-weight: 500;
+            text-align: left;
+        }
+
+        .post-time {
+            color: var(--cblack);
+            font-family: Montserrat;
+            font-size: 1rem;
+            font-weight: 300;
+            text-align: right;
+        }
+
+        .post-caption {
+            margin-top: 8px;
+        }
+
+        .post-text {
+            font-family: Montserrat;
+            font-size: var(--fmedium);
+            font-weight: 400;
+            text-align: left;
+        }
+
+        .post-stats {
+            margin-top: 8px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* Стили для комментариев (аналогичные постам) */
+        .comments-container {
+            background-color: var(--cwhiteplus);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 24px;
+        }
+
+        .comments-title {
+            color: var(--cblack);
+            font-family: Montserrat;
+            font-size: var(--fmediumplus);
+            font-weight: 500;
+            margin-bottom: 16px;
+        }
+
+        .comment {
+            margin-bottom: 24px;
+            border-radius: 8px;
+            transition: 0.3s;
+        }
+
+        .comment-info {
+            display: flex;
+            align-items: center;
+        }
+
+        .comment-profile {
+            height: 4.7vh;
+            aspect-ratio: 1;
+            border-radius: 6px;
+        }
+
+        .comment-author {
+            color: var(--cblack);
+            font-family: Montserrat;
+            font-size: var(--fmedium);
+            font-weight: 500;
+            margin-left: 8px;
+        }
+
+        .comment-date {
+            color: var(--cblack);
+            font-family: Montserrat;
+            font-size: 0.9rem;
+            font-weight: 300;
+            margin-left: auto;
+        }
+
+        .comment-text {
+            margin-top: 8px;
+            font-family: Montserrat;
+            font-size: var(--fmedium);
+            font-weight: 400;
+            color: var(--cblack);
+        }
+
+        /* Форма добавления комментария */
+        .comment-form {
+            display: flex;
+            gap: 10px;
+            margin-top: 16px;
+            margin-bottom: 24px;
+            align-items: center;
+        }
+
+        .comment-input {
+            flex-grow: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 6px;
+            background-color: var(--cwhite);
+            font-family: Montserrat;
+            font-size: var(--fmedium);
+            color: var(--cblack);
+            outline: none;
+            transition: 0.2s;
+        }
+
+        .comment-input:focus {
+            background-color: var(--cwhite);
+        }
+
+        .comment-submit {
+            padding: 8px 16px;
+            background: linear-gradient(270deg, rgb(54, 255, 110) 0%, rgb(56, 145, 253) 100%);
+            color: var(--cwhiteplus);
+            border: none;
+            border-radius: 6px;
+            font-family: Montserrat;
+            font-size: var(--fmedium);
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .comment-submit:hover {
+            filter: hue-rotate(-15deg);
+        }
+
+        /* Адаптивность */
+        @media (max-width: 1000px) {
+            .container {
+                width: 90vw !important;
+            }
+            
+            :root {
+                --fsmall: 1rem;
+                --fmedium: 1.2rem;
+                --fmediumplus: 1.4rem;
+                --flarge: 1.8rem;
+            }
+            
+            .comment-form {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .comment-submit {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        {% include 'nav.html' %}
+    </header>
+
+    <div class="container">
+        <!-- Пост будет загружен через JS -->
+        <div class="post" id="post-container">
+            <div class="loading"></div>
+        </div>
+        
+        <!-- Комментарии -->
+        <div class="comments-container">
+            <div class="comments-title">Комментарии</div>
+            
+            <!-- Форма добавления комментария -->
+            <div class="comment-form">
+                <div class="comment-profile" style="background: url({{ user_avatar }}) #ffffff00 0% / cover no-repeat;"></div>
+                <input type="text" class="comment-input" placeholder="Комментарий" id="comment-input">
+                <button class="comment-submit" id="comment-submit">Отправить</button>
+            </div>
+            
+            <!-- Список комментариев -->
+            <div class="comments-list" id="comments-list">
+                <div class="loading"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const postId = window.location.pathname.split('/').pop();
+            const commentInput = document.getElementById('comment-input');
+            const commentSubmit = document.getElementById('comment-submit');
+            const commentsList = document.getElementById('comments-list');
+            const postContainer = document.getElementById('post-container');
+            
+            // Загружаем пост и комментарии
+            function loadPostAndComments() {
+                fetch(`/get_post_comments/${postId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        // Отображаем пост
+                        if (data.post) {
+                            postContainer.innerHTML = `
+                                <div class="post-info">
+                                    <div class="post-profile" style="background: url(${data.post.author_avatar}) #ffffff00 0% / cover no-repeat;"></div>
+                                    <div class="info-text">
+                                        <div class="post-name">
+                                            <a href="/profile/${data.post.author_id}" class="nickname">${data.post.author_name}</a>
+                                        </div>
+                                        <div class="post-time">${data.post.date}</div>
+                                    </div>
+                                </div>
+                                <div class="post-caption">
+                                    <div class="post-text">${data.post.caption}</div>
+                                </div>
+                                <div class="post-stats">
+                                    <span class="post-comment">${data.post.comments_count}</span>
+                                    <span class="post-like">${data.post.likes_count}</span>
+                                </div>
+                            `;
+                        }
+                        
+                        // Отображаем комментарии
+                        if (data.comments && data.comments.length > 0) {
+                            commentsList.innerHTML = data.comments.map(comment => `
+                                <div class="comment">
+                                    <div class="comment-info">
+                                        <div class="comment-profile" style="background: url(${comment.author_avatar}) #ffffff00 0% / cover no-repeat;"></div>
+                                        <a href="/profile/${comment.user_id}" class="comment-author">${comment.author_name}</a>
+                                        <div class="comment-date">${comment.date}</div>
+                                    </div>
+                                    <div class="comment-text">${comment.text}</div>
+                                </div>
+                            `).join('');
+                        } else {
+                            commentsList.innerHTML = '<div class="comment">Пока нет комментариев</div>';
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        postContainer.innerHTML = '<div class="comment">Ошибка загрузки поста</div>';
+                        commentsList.innerHTML = '<div class="comment">Ошибка загрузки комментариев</div>';
+                    });
+            }
+            
+            // Отправка комментария
+            commentSubmit.addEventListener('click', function() {
+                const text = commentInput.value.trim();
+                if (text) {
+                    const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+                    
+                    fetch("/add_comment", {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': csrfToken
+                        },
+                        body: JSON.stringify({
+                            post_id: postId,
+                            text: text
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            commentInput.value = '';
+                            loadPostAndComments(); // Перезагружаем комментарии
+                        }
+                    })
+                    .catch(error => console.error('Error:', error));
+                }
+            });
+            
+            // Отправка по нажатию Enter
+            commentInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    commentSubmit.click();
+                }
+            });
+            
+            // Первоначальная загрузка
+            loadPostAndComments();
+        });
+    </script>
+</body>
+</html>

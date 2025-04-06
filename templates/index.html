@@ -4,67 +4,201 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Confus</title>
-    <meta name="csrf-token" content="{{ csrf_token() }}">  <!-- CSRF-токен -->
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     {% include 'link.html' %}
+    <style>
+
+    </style>
 </head>
 <body>
     <script>
+        // Функция для создания HTML-разметки поста
+        let isVideoPlaying = false;
+        document.addEventListener('play', function(e) {
+            if (e.target.tagName === 'VIDEO' && e.target.closest('.post')) {
+                isVideoPlaying = true;
+                console.log('Видео начато - обновления приостановлены');
+            }
+        }, true);
+
+        document.addEventListener('pause', function(e) {
+            if (e.target.tagName === 'VIDEO' && e.target.closest('.post')) {
+                isVideoPlaying = false;
+                console.log('Видео остановлено - обновления возобновлены');
+                // Принудительно обновляем после паузы
+                loadNewPosts();
+            }
+        }, true);
+        function renderPost(post) {
+            // Обработка аватара автора
+            let authorAvatar = post.author_avatar;
+            if (!authorAvatar) {
+                // Проверяем существование аватара
+                const avatarCheck = `/static/avatar/${post.author_id}.*`;
+                try {
+                    // В реальном коде это нужно делать на сервере
+                    authorAvatar = `/static/avatar/${post.author_id}.jpg`; // Пример
+                } catch {
+                    authorAvatar = '/static/avatar/default_avatar.jpg';
+                }
+            }
+    
+            // Обработка медиа-контента
+            let mediaContent = '';
+            if (post.media) {
+                // Если media - строка (JSON), преобразуем в объект
+                const mediaArray = typeof post.media === 'string' ? JSON.parse(post.media) : post.media;
+                
+                mediaContent = '<div class="post-media-container">';
+                mediaArray.forEach(media => {
+                    if (media.url) { // Добавляем проверку на наличие url
+                        if (media.type.startsWith('image')) {
+                            mediaContent += `<img src="${media.url}" class="post-media" loading="lazy">`;
+                        } else if (media.type.startsWith('video')) {
+                            mediaContent += `
+                                <video controls class="post-media">
+                                    <source src="${media.url}" type="${media.type}">
+                                </video>
+                            `;
+                        }
+                    }
+                });
+                mediaContent += '</div>';
+            }
+    
+            // Форматирование даты
+            const postDate = post.date ? new Date(post.date).toLocaleString() : 'Только что';
+    
+            return `
+                <div class="post" data-post-id="${post.id}">
+                    <div class="post-info">
+                        <div class="post-profile" style="background: url(${authorAvatar}) center/cover no-repeat;"></div>
+                        <div class="info-text">
+                            <div class="post-name">
+                                <a href="/profile/${post.author_id}" class="nickname">${post.author_name}</a>
+                            </div>
+                            <div class="post-time">${postDate}</div>
+                        </div>
+                    </div>
+                    <div class="post-caption">
+                        <div class="post-text">${post.caption || ''}</div>
+                    </div>
+                    ${mediaContent}
+                    <div class="post-stats">
+                        <a href="/post/${post.id}" class="post-comment">${post.comments_count || 0}</a>
+                        <button type="button" class="post-like ${post.is_liked ? 'liked' : ''}" 
+                                data-post-id="${post.id}">${post.likes_count || 0}</button>
+                    </div>
+                </div>
+            `;
+        }
+    
+    
         document.addEventListener('DOMContentLoaded', function() {
             const createPostArea = document.querySelector('.createpost-area');
             const buttonCont = document.querySelector('.button-cont');
             const postForm = document.querySelector('.createpost form');
             const postsContainer = document.querySelector('.posts');
+            const filterButtons = document.querySelectorAll('.filter-btn');
+            const mediaUpload = document.getElementById('mediaUpload');
+            const mediaPreview = document.getElementById('mediaPreview');
+            
+            let currentFilter = 'all';
+            let mediaFiles = [];
+            
+            // Обработчик загрузки медиа
+            mediaUpload.addEventListener('change', function(e) {
+                mediaFiles = Array.from(e.target.files);
+                mediaPreview.innerHTML = '';
+                
+                mediaFiles.forEach((file, index) => {
+                    const reader = new FileReader();
+                    reader.onload = function(event) {
+                        const previewItem = document.createElement('div');
+                        previewItem.className = 'media-preview-item';
+                        
+                        if (file.type.startsWith('image/')) {
+                            previewItem.innerHTML = `
+                                <img src="${event.target.result}" alt="Preview">
+                                <button class="remove-media" data-index="${index}">×</button>
+                            `;
+                        } else if (file.type.startsWith('video/')) {
+                            previewItem.innerHTML = `
+                                <video controls>
+                                    <source src="${event.target.result}" type="${file.type}">
+                                </video>
+                                <button class="remove-media" data-index="${index}">×</button>
+                            `;
+                        }
+                        
+                        mediaPreview.appendChild(previewItem);
+                    };
+                    reader.readAsDataURL(file);
+                });
+            });
+            
+            // Удаление медиа
+            mediaPreview.addEventListener('click', function(e) {
+                if (e.target.classList.contains('remove-media')) {
+                    const index = e.target.getAttribute('data-index');
+                    mediaFiles.splice(index, 1);
+                    e.target.parentElement.remove();
+                }
+            });
+            
+            // Обработчики фильтров
+            filterButtons.forEach(btn => {
+                btn.addEventListener('click', function() {
+                    filterButtons.forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    currentFilter = this.dataset.filter;
+                    loadNewPosts();
+                });
+            });
+            
+            // Активируем кнопку "Все" по умолчанию
+            document.querySelector('.filter-btn[data-filter="all"]').classList.add('active');
         
-            // Обработчик для отображения кнопки отправки поста
+            // Обработчик отображения кнопки отправки
             createPostArea.addEventListener('click', function() {
                 buttonCont.classList.remove('hidden');
             });
+            
         
-            // Обработчик для отправки поста
+            // Обработчик отправки поста
             postForm.addEventListener('submit', function(event) {
                 event.preventDefault();
                 const caption = createPostArea.innerText.trim();
-                if (caption) {
-                    const csrfToken = document.querySelector('meta[name="csrf-token"]').content;  // Получаем CSRF-токен
+                
+                if (caption || mediaFiles.length > 0) {
+                    const formData = new FormData();
+                    formData.append('caption', caption);
+                    
+                    mediaFiles.forEach(file => {
+                        formData.append('media', file);
+                    });
+                    
+                    const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+                    
                     fetch("{{ url_for('create_post') }}", {
                         method: 'POST',
                         headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken': csrfToken  // Добавляем CSRF-токен в заголовок
+                            'X-CSRFToken': csrfToken
                         },
-                        body: JSON.stringify({ caption: caption })
+                        body: formData
                     })
                     .then(response => response.json())
                     .then(data => {
                         if (data.success) {
-                            // Очищаем поле ввода
                             createPostArea.innerText = '';
+                            mediaPreview.innerHTML = '';
+                            mediaFiles = [];
+                            mediaUpload.value = '';
                             buttonCont.classList.add('hidden');
-        
-                            // Добавляем новый пост в начало списка
+                            
                             const postElement = document.createElement('div');
-                            postElement.classList.add('post');
-                            postElement.innerHTML = `
-                                <div class="post-info">
-                                    <div class="post-profile" style="background: url(${data.post.author_avatar}) #ffffff00 0% / cover no-repeat;"></div>
-                                    <div class="info-text">
-                                        <div class="post-name">
-                                            <a href="/profile/${data.post.author_id}" class="nickname">${data.post.author_name}</a>
-                                        </div>
-                                        <div class="post-time">${new Date(data.post.date).toLocaleString()}</div>
-                                    </div>
-                                </div>
-                                <div class="post-caption">
-                                    <div class="post-text">${data.post.caption}</div>
-                                </div>
-                                <div class="post-stats">
-                                    <button class="post-comment">${data.post.comments_count}</button>
-                                    <button type="button" class="post-like" data-post-id="${data.post.id}">${data.post.likes_count}</button>
-                                </div>
-                            `;
+                            postElement.innerHTML = renderPost(data.post);
                             postsContainer.insertBefore(postElement, postsContainer.firstChild);
-        
-                            // Добавляем обработчик для новой кнопки лайка
                             addLikeHandlers();
                         }
                     })
@@ -79,33 +213,27 @@
                         const postId = this.getAttribute('data-post-id');
                         const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
         
-                        console.log('Post ID:', postId);  // Логируем post_id
-                        console.log('CSRF Token:', csrfToken);  // Логируем CSRF-токен
-        
                         fetch("{{ url_for('like_post') }}", {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
-                                'X-CSRFToken': csrfToken  // Передаём CSRF-токен
+                                'X-CSRFToken': csrfToken
                             },
-                            body: JSON.stringify({ post_id: postId, csrf_token: csrfToken })  // Добавляем CSRF-токен в тело запроса
+                            body: JSON.stringify({ post_id: postId, csrf_token: csrfToken })
                         })
                         .then(response => response.json())
                         .then(data => {
-                            console.log('Server response:', data);  // Логируем ответ сервера
                             if (data.success) {
                                 const likeButton = document.querySelector(`.post-like[data-post-id="${postId}"]`);
                                 if (likeButton) {
                                     const currentLikes = parseInt(likeButton.innerText);
                                     if (data.action === 'like') {
                                         likeButton.innerText = currentLikes + 1;
-                                        likeButton.classList.add('liked');  // Добавляем класс
+                                        likeButton.classList.add('liked');
                                     } else {
                                         likeButton.innerText = currentLikes - 1;
-                                        likeButton.classList.remove('liked');  // Удаляем класс
+                                        likeButton.classList.remove('liked');
                                     }
-                                } else {
-                                    console.error('Like button not found for post ID:', postId);
                                 }
                             }
                         })
@@ -115,47 +243,48 @@
             }
         
             // Загрузка новых постов
-            function loadNewPosts() {
-                console.log('Loading new posts...');  // Логируем начало загрузки
-                fetch('/get_new_posts')
-                    .then(response => response.json())
-                    .then(posts => {
-                        postsContainer.innerHTML = '';
-                        posts.forEach(post => {
-                            const postElement = document.createElement('div');
-                            postElement.classList.add('post');
-                            postElement.innerHTML = `
-                                <div class="post-info">
-                                    <div class="post-profile" style="background: url(${post.author_avatar}) #ffffff00 0% / cover no-repeat;"></div>
-                                    <div class="info-text">
-                                        <div class="post-name">
-                                            <a href="/profile/${post.author_id}" class="nickname">${post.author_name}</a>
-                                        </div>
-                                        <div class="post-time">${new Date(post.date).toLocaleString()}</div>
-                                    </div>
-                                </div>
-                                <div class="post-caption">
-                                    <div class="post-text">${post.caption}</div>
-                                </div>
-                                <div class="post-stats">
-                                    <button class="post-comment">${post.comments_count}</button>
-                                    <button type="button" class="post-like ${post.is_liked ? 'liked' : ''}" data-post-id="${post.id}">${post.likes_count}</button>
-                                </div>
-                            `;
-                            postsContainer.appendChild(postElement);
-                        });
-            
-                        // Добавляем обработчики для новых кнопок лайка
-                        addLikeHandlers();
-                    })
-                    .catch(error => console.error('Error loading posts:', error));
+            async function loadNewPosts() {
+                try {
+                    const url = currentFilter !== 'all' 
+                        ? `/get_new_posts?filter=${currentFilter}` 
+                        : '/get_new_posts';
+                    
+                    const response = await fetch(url);
+                    if (!response.ok) throw new Error('Network error');
+                    
+                    const posts = await response.json();
+                    postsContainer.innerHTML = '';
+                    
+                    if (!posts || posts.length === 0) {
+                        postsContainer.innerHTML = '<div class="no-posts">Нет постов для отображения</div>';
+                        return;
+                    }
+                    
+                    // Создаем DocumentFragment для эффективного рендеринга
+                    const fragment = document.createDocumentFragment();
+                    posts.forEach(post => {
+                        const postElement = document.createElement('div');
+                        postElement.innerHTML = renderPost(post);
+                        fragment.appendChild(postElement);
+                    });
+                    
+                    postsContainer.appendChild(fragment);
+                    addLikeHandlers();
+                    
+                } catch (error) {
+                    console.error('Ошибка загрузки постов:', error);
+                    postsContainer.innerHTML = '<div class="no-posts">Ошибка загрузки. Пожалуйста, обновите страницу.</div>';
+                }
             }
         
-            // Загрузка новых постов при загрузке страницы
+            // Первоначальная загрузка
             loadNewPosts();
         
-            // Загрузка новых постов каждые 5 секунд
-            setInterval(loadNewPosts, 10000);
+            let refreshInterval = setInterval(() => {
+                if (!isVideoPlaying) {
+                    loadNewPosts();
+                }
+            }, 30000);
         });
     </script>
     
@@ -164,19 +293,25 @@
     </header>
 
     <div class="container">
+
+        
         <div class="createpost">
             <form id="postForm" style="width: 100%; display: flex; flex-direction: column; align-items: center;">
                 <div class="createpost-area" name="caption" contenteditable="true"></div>
                 <div class="button-cont hidden">
+                    <input type="file" id="mediaUpload" accept="image/*, video/*" multiple style="display: none;">
+                    <label for="mediaUpload" class="upload-btn">Добавить медиа</label>
+                    <div id="mediaPreview" class="media-preview"></div>
                     <input class="createpost-button log-reg-button" type="submit">
                 </div>
             </form>
         </div>
+        <div class="post-filters">
+            <button class="filter-btn" data-filter="all">Все</button>
+            <button class="filter-btn" data-filter="popular">Популярные</button>
+            <button class="filter-btn" data-filter="discussed">Обсуждаемые</button>
+        </div>
         <div class="posts">
-            <div class="loading"></div>
-            <div class="loading"></div>
-            <div class="loading"></div>
-            <div class="loading"></div>
             <div class="loading"></div>
             <div class="loading"></div>
             <div class="loading"></div>

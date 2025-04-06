@@ -8,6 +8,8 @@ import pytz
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_wtf.csrf import validate_csrf
 from wtforms import ValidationError
+import json  # Добавьте этот импорт
+from werkzeug.utils import secure_filename
 
 # Установка часового пояса (например, Москва)
 moscow_tz = pytz.timezone('Europe/Moscow')
@@ -33,46 +35,93 @@ def index():
 
     return render_template('index.html', user_avatar=user_avatar, user_id=user_id)
 
+
+
+# Настройки загрузки файлов
+UPLOAD_FOLDER = 'static/uploads'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'mp4', 'mov', 'avi'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 @app.route('/create_post', methods=['POST'])
 def create_post():
-    # Проверка наличия сессии
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'Необходима авторизация'}), 401
 
-    # Получаем данные из JSON
-    data = request.get_json()
-    caption = data.get('caption')
-    author_id = session['user_id']
+    try:
+        caption = request.form.get('caption', '')
+        author_id = session['user_id']
+        media_files = request.files.getlist('media')
+        media_data = []
 
-    # Подключение к базе данных
-    connection = get_db_connection()
-    cursor = connection.cursor()
+        # Обработка медиафайлов
+        UPLOAD_FOLDER = 'static/uploads'
+        ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'mp4', 'mov', 'avi'}
+        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-    # Вставка данных поста в таблицу posts
-    cursor.execute("""
-        INSERT INTO posts (author_id, caption)
-        VALUES (%s, %s)
-    """, (author_id, caption))
+        for file in media_files:
+            if file and '.' in file.filename:
+                ext = file.filename.rsplit('.', 1)[1].lower()
+                if ext in ALLOWED_EXTENSIONS:
+                    filename = secure_filename(f"{author_id}_{int(datetime.now().timestamp())}.{ext}")
+                    filepath = os.path.join(UPLOAD_FOLDER, filename)
+                    file.save(filepath)
+                    
+                    file_type = f"image/{ext}" if ext in {'png', 'jpg', 'jpeg', 'gif'} else f"video/{ext}"
+                    media_data.append({
+                        'url': url_for('static', filename=f'uploads/{filename}'),
+                        'type': file_type
+                    })
 
-    # Фиксация изменений и закрытие соединения
-    connection.commit()
-    cursor.close()
-    connection.close()
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)  # Убедитесь, что используете правильный курсор
 
-    # Возвращаем JSON-ответ
-    return jsonify({
-        'success': True,
-        'post': {
-            'author_id': author_id,
-            'author_name': session.get('username'),
-            'author_avatar': url_for('static', filename=f"avatar/{author_id}.jpg"),
-            'date': datetime.now().isoformat(),
-            'caption': caption,
-            'comments_count': 0,
-            'likes_count': 0
-        }
-    })
+        # Вставка нового поста
+        cursor.execute("""
+            INSERT INTO posts (author_id, caption, media)
+            VALUES (%s, %s, %s)
+        """, (
+            author_id, 
+            caption, 
+            json.dumps(media_data) if media_data else None
+        ))
+        
+        post_id = cursor.lastrowid
+        
+        # Получаем данные о посте
+        cursor.execute("""
+            SELECT date, likes_count, comments_count 
+            FROM posts 
+            WHERE id = %s
+        """, (post_id,))
+        post_data = cursor.fetchone()
+        
+        connection.commit()
 
+        return jsonify({
+            'success': True,
+            'post': {
+                'id': post_id,
+                'author_id': author_id,
+                'author_name': session.get('username'),
+                'author_avatar': url_for('static', filename=f"avatar/{author_id}.jpg"),
+                'date': post_data['date'].isoformat(),  # Теперь можно обращаться по ключу
+                'caption': caption,
+                'media': media_data,
+                'comments_count': post_data['comments_count'],
+                'likes_count': post_data['likes_count']
+            }
+        })
+
+    except Exception as e:
+        print(f"Error creating post: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'connection' in locals(): connection.close()
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -142,72 +191,107 @@ def login():
     return render_template('login.html')
 
 
-@app.route('/get_new_posts', methods=['GET'])
+from datetime import datetime, timedelta  # Добавьте этот импорт в начало файла
+
+@app.route('/get_new_posts')
 def get_new_posts():
-    connection = get_db_connection()
-    cursor = connection.cursor(dictionary=True)
+    try:
+        # Проверка авторизации
+        if 'user_id' not in session:
+            return jsonify({'success': False, 'message': 'Требуется авторизация'}), 401
 
-    # Получаем ID текущего пользователя (если он авторизован)
-    user_id = session.get('user_id')
+        # Получаем параметр фильтра
+        filter_type = request.args.get('filter', 'all')
+        user_id = session['user_id']
+        time_filter = datetime.now() - timedelta(hours=12)
+        
+        connection = get_db_connection()
+        if not connection:
+            return jsonify({'success': False, 'message': 'Ошибка подключения к БД'}), 500
 
-    # Запрос для получения постов
-    cursor.execute("""
-        SELECT 
-            posts.id, 
-            posts.author_id, 
-            posts.date, 
-            posts.caption, 
-            posts.attachment, 
-            posts.likes_count, 
-            posts.comments_count, 
-            users.username AS author_name, 
-            users.avatar AS author_avatar
-        FROM 
-            posts 
-        JOIN 
-            users 
-        ON 
-            posts.author_id = users.id
-        ORDER BY posts.date DESC
-    """)
-    posts = cursor.fetchall()
+        cursor = connection.cursor(dictionary=True)
 
-    # Для каждого поста проверяем, лайкнул ли его текущий пользователь
-    for post in posts:
-        post_date = post['date']
-        if isinstance(post_date, datetime):
-            utc_date = pytz.utc.localize(post_date)
-            local_date = utc_date.astimezone(moscow_tz)
-            post['date'] = local_date.isoformat()
+        # Основной запрос с учетом медиа-контента
+        base_query = """
+            SELECT 
+                p.id, p.author_id, p.date, p.caption,
+                p.likes_count, p.comments_count, p.media,
+                u.username AS author_name,
+                u.avatar AS author_avatar,
+                EXISTS(
+                    SELECT 1 FROM likes l 
+                    WHERE l.post_id = p.id AND l.user_id = %s
+                ) AS is_liked
+            FROM posts p
+            JOIN users u ON p.author_id = u.id
+        """
 
-        # Проверка лайка
-        if user_id:
-            cursor.execute("""
-                SELECT id FROM likes WHERE user_id = %s AND post_id = %s
-            """, (user_id, post['id']))
-            like = cursor.fetchone()
-            post['is_liked'] = like is not None
-        else:
-            post['is_liked'] = False
+        # Добавляем условия фильтрации
+        if filter_type == 'popular':
+            query = base_query + """
+                WHERE p.date >= %s
+                ORDER BY p.likes_count DESC, p.date DESC
+                LIMIT 50
+            """
+            params = (user_id, time_filter)
+        elif filter_type == 'discussed':
+            query = base_query + """
+                WHERE p.date >= %s
+                ORDER BY p.comments_count DESC, p.date DESC
+                LIMIT 50
+            """
+            params = (user_id, time_filter)
+        else:  # 'all' и 'recent'
+            query = base_query + """
+                ORDER BY p.date DESC
+                LIMIT 50
+            """
+            params = (user_id,)
 
-        # Проверка аватарки
-        avatar_path = f"static/avatar/{post['author_id']}.*"
-        avatar_files = glob.glob(avatar_path)
-        if avatar_files:
-            post['author_avatar'] = url_for('static', filename=f"avatar/{os.path.basename(avatar_files[0])}")
-        else:
-            post['author_avatar'] = url_for('static', filename='avatar/default_avatar.jpg')
+        cursor.execute(query, params)
+        posts = cursor.fetchall()
 
-    cursor.close()
-    connection.close()
+        # Обработка результатов
+        processed_posts = []
+        for post in posts:
+            # Обработка медиа-контента
+            try:
+                post['media'] = json.loads(post['media']) if post['media'] else []
+            except (TypeError, json.JSONDecodeError):
+                post['media'] = []
 
-    return jsonify(posts)
+            # Форматирование даты
+            if isinstance(post['date'], datetime):
+                utc_date = pytz.utc.localize(post['date'])
+                local_date = utc_date.astimezone(moscow_tz)
+                post['date'] = local_date.isoformat()
+
+            # Проверка аватарки автора
+            avatar_path = f"static/avatar/{post['author_id']}.*"
+            avatar_files = glob.glob(avatar_path)
+            post['author_avatar'] = (
+                url_for('static', filename=f"avatar/{os.path.basename(avatar_files[0])}")
+                if avatar_files 
+                else url_for('static', filename='avatar/default_avatar.jpg')
+            )
+
+            processed_posts.append(post)
+
+        return jsonify(processed_posts)
+
+    except Exception as e:
+        print(f"Database error: {e}")
+        return jsonify({'success': False, 'message': f'Ошибка базы данных: {str(e)}'}), 500
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'connection' in locals():
+            connection.close()
 
 from flask import request, render_template
 
 @app.route('/profile/<int:user_id>', methods=['GET'])
 def profile(user_id):
-    # Подключение к базе данных
     connection = get_db_connection()
     cursor = connection.cursor(dictionary=True)
 
@@ -224,17 +308,18 @@ def profile(user_id):
             id = %s
     """, (user_id,))
     user = cursor.fetchone()
+    
+    # Проверка аватарки текущего пользователя (из сессии)
+    user_avatar = None
     if 'user_id' in session:
-            #пользователь в сессии
-            user_id = session['user_id'] #айди по сессии
-            avatar_path = f"static/avatar/{user_id}.*" #путь к аватаркам
-            avatar_files = glob.glob(avatar_path) #возвращение аватарок
-            if avatar_files:
-                #если есть аватарка даём путь
-                user_avatar = url_for('static', filename=f"avatar/{os.path.basename(avatar_files[0])}")
-            else:
-                #если нет, ставим дефолтную
-                user_avatar = url_for('static', filename='avatar/default_avatar.jpg')
+        session_user_id = session['user_id']
+        avatar_path = f"static/avatar/{session_user_id}.*"
+        avatar_files = glob.glob(avatar_path)
+        if avatar_files:
+            user_avatar = url_for('static', filename=f"avatar/{os.path.basename(avatar_files[0])}")
+        else:
+            user_avatar = url_for('static', filename='avatar/default_avatar.jpg')
+
     if user:
         # Подсчет количества подписчиков
         cursor.execute("""
@@ -248,33 +333,41 @@ def profile(user_id):
         followers_count = cursor.fetchone()['followers_count']
         user['followers_count'] = followers_count
 
-        # Проверка наличия аватарки в папке /static/avatar/
+        # Проверка аватарки
         avatar_path = f"static/avatar/{user['id']}.*"
         avatar_files = glob.glob(avatar_path)
         if avatar_files:
             user['avatar'] = url_for('static', filename=f"avatar/{os.path.basename(avatar_files[0])}")
         else:
-            user['avatar'] = url_for('static', filename='avatar/default_avatar.jpg')  # Дефолтная аватарка
+            user['avatar'] = url_for('static', filename='avatar/default_avatar.jpg')
 
-        # Проверка наличия фонового изображения в папке /static/background/
+        # Проверка фона
         background_path = f"static/background/{user['id']}.*"
         background_files = glob.glob(background_path)
         if background_files:
             user['background'] = url_for('static', filename=f"background/{os.path.basename(background_files[0])}")
         else:
-            user['background'] = url_for('static', filename='background/default_background.png')  # Дефолтное фоновое изображение
+            user['background'] = url_for('static', filename='background/default_background.png')
 
-        # Закрытие соединения с базой данных
+        # Проверка, является ли профиль профилем текущего пользователя
+        is_own_profile = False
+        if 'user_id' in session and session['user_id'] == user['id']:
+            is_own_profile = True
+
         cursor.close()
         connection.close()
 
-        return render_template('profile.html', user=user, user_id=user_id, user_avatar=user_avatar)
+        return render_template(
+            'profile.html', 
+            user=user, 
+            user_id=user_id, 
+            user_avatar=user_avatar,
+            is_own_profile=is_own_profile
+        )
     else:
-        # Закрытие соединения с базой данных
         cursor.close()
         connection.close()
         return "Пользователь не найден", 404
-    
 
 
 @app.route('/like_post', methods=['POST'])
@@ -395,7 +488,6 @@ def update_profile():
         return redirect(url_for('login'))
     
     user_id = session['user_id']
-    username = request.form.get('username')
     description = request.form.get('description')
     avatar = request.files.get('avatar')
     background = request.files.get('background')
@@ -407,9 +499,9 @@ def update_profile():
         # Обновляем основные данные
         cursor.execute("""
             UPDATE users 
-            SET username = %s, description = %s 
+            SET description = %s 
             WHERE id = %s
-        """, (username, description, user_id))
+        """, (description, user_id))
         
         # Сохраняем аватар, если он был загружен
         if avatar and avatar.filename:
@@ -440,6 +532,150 @@ def update_profile():
     except Exception as e:
         connection.rollback()
         return str(e), 500
+    finally:
+        cursor.close()
+        connection.close()
+
+@app.route('/post/<int:post_id>')
+def post_details(post_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    # Получаем данные текущего пользователя для шапки
+    user_id = session['user_id']
+    avatar_path = f"static/avatar/{user_id}.*"
+    avatar_files = glob.glob(avatar_path)
+    user_avatar = url_for('static', filename=f"avatar/{os.path.basename(avatar_files[0])}") if avatar_files else url_for('static', filename='avatar/default_avatar.jpg')
+
+    return render_template('post_details.html', 
+                         post_id=post_id,
+                         user_avatar=user_avatar,
+                         user_id=user_id)
+
+@app.route('/get_post_comments/<int:post_id>')
+def get_post_comments(post_id):
+    connection = get_db_connection()
+    cursor = connection.cursor(dictionary=True)
+
+    # Получаем сам пост
+    cursor.execute("""
+        SELECT 
+            posts.*, 
+            users.username AS author_name,
+            users.avatar AS author_avatar
+        FROM posts
+        JOIN users ON posts.author_id = users.id
+        WHERE posts.id = %s
+    """, (post_id,))
+    post = cursor.fetchone()
+
+    # Получаем комментарии
+    cursor.execute("""
+        SELECT 
+            comments.*, 
+            users.username AS author_name,
+            users.avatar AS author_avatar
+        FROM comments
+        JOIN users ON comments.user_id = users.id
+        WHERE comments.post_id = %s
+        ORDER BY comments.date ASC
+    """, (post_id,))
+    comments = cursor.fetchall()
+
+    # Форматируем данные
+    if post:
+        # Обработка аватарки автора поста
+        avatar_path = f"static/avatar/{post['author_id']}.*"
+        avatar_files = glob.glob(avatar_path)
+        post['author_avatar'] = url_for('static', filename=f"avatar/{os.path.basename(avatar_files[0])}") if avatar_files else url_for('static', filename='avatar/default_avatar.jpg')
+
+        # Форматирование даты
+        if isinstance(post['date'], datetime):
+            utc_date = pytz.utc.localize(post['date'])
+            local_date = utc_date.astimezone(moscow_tz)
+            post['date'] = local_date.strftime('%d.%m.%Y %H:%M')
+
+    for comment in comments:
+        # Обработка аватарок комментаторов
+        avatar_path = f"static/avatar/{comment['user_id']}.*"
+        avatar_files = glob.glob(avatar_path)
+        comment['author_avatar'] = url_for('static', filename=f"avatar/{os.path.basename(avatar_files[0])}") if avatar_files else url_for('static', filename='avatar/default_avatar.jpg')
+
+        # Форматирование даты
+        if isinstance(comment['date'], datetime):
+            utc_date = pytz.utc.localize(comment['date'])
+            local_date = utc_date.astimezone(moscow_tz)
+            comment['date'] = local_date.strftime('%d.%m.%Y %H:%M')
+
+    cursor.close()
+    connection.close()
+
+    return jsonify({
+        'post': post,
+        'comments': comments
+    })
+
+@app.route('/add_comment', methods=['POST'])
+def add_comment():
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Необходима авторизация'}), 401
+
+    data = request.get_json()
+    post_id = data.get('post_id')
+    text = data.get('text')
+    user_id = session['user_id']
+
+    if not text or not post_id:
+        return jsonify({'success': False, 'message': 'Неверные данные'}), 400
+
+    connection = get_db_connection()
+    cursor = connection.cursor(dictionary=True)
+
+    try:
+        # Добавляем комментарий
+        cursor.execute("""
+            INSERT INTO comments (post_id, user_id, text)
+            VALUES (%s, %s, %s)
+        """, (post_id, user_id, text))
+
+        # Обновляем счетчик комментариев в посте
+        cursor.execute("""
+            UPDATE posts SET comments_count = comments_count + 1
+            WHERE id = %s
+        """, (post_id,))
+
+        # Получаем данные нового комментария
+        cursor.execute("""
+            SELECT 
+                comments.*,
+                users.username AS author_name,
+                users.avatar AS author_avatar
+            FROM comments
+            JOIN users ON comments.user_id = users.id
+            WHERE comments.id = LAST_INSERT_ID()
+        """)
+        new_comment = cursor.fetchone()
+
+        # Форматируем данные
+        avatar_path = f"static/avatar/{new_comment['user_id']}.*"
+        avatar_files = glob.glob(avatar_path)
+        new_comment['author_avatar'] = url_for('static', filename=f"avatar/{os.path.basename(avatar_files[0])}") if avatar_files else url_for('static', filename='avatar/default_avatar.jpg')
+
+        if isinstance(new_comment['date'], datetime):
+            utc_date = pytz.utc.localize(new_comment['date'])
+            local_date = utc_date.astimezone(moscow_tz)
+            new_comment['date'] = local_date.strftime('%d.%m.%Y %H:%M')
+
+        connection.commit()
+
+        return jsonify({
+            'success': True,
+            'comment': new_comment
+        })
+
+    except Exception as e:
+        connection.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
     finally:
         cursor.close()
         connection.close()

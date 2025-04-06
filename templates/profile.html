@@ -21,9 +21,12 @@
                         <h2 class="profile-desc">{{ user.description }}</h2>
                     </div>
                     <div class="profile-buttons">
-                        <p href="" class="subs">{{ user.followers_count }} подписчиков</p>
-                        <!-- <button type="button" class="nosubbed log-reg-button profile-button hidden">Подписаться</button> -->
-                        <a href="/editor" class="nosubbed log-reg-button profile-button">Редактировать</a>
+                        {% if is_own_profile %}
+                            <a href="/editor" class="nosubbed log-reg-button profile-button">Редактировать</a>
+                        {% else %}
+                            <p class="subs">{{ user.followers_count }} подписчиков</p>
+                            <button type="button" class="nosubbed log-reg-button profile-button">Подписаться</button>
+                        {% endif %}
                     </div>
                 </div>
             </div>
